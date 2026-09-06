@@ -86,7 +86,7 @@ describe('GeneralSettings terminal shell', () => {
   beforeEach(() => {
     updateSection.mockClear()
     load.mockClear()
-    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual' }
+    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual', webgl: undefined, ligatures: undefined }
     hipConfigState.config.codeBlock = { colorTheme: 'follow' }
   })
   afterEach(() => {
@@ -155,7 +155,7 @@ describe('GeneralSettings terminal color', () => {
   beforeEach(() => {
     updateSection.mockClear()
     load.mockClear()
-    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual' }
+    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual', webgl: undefined, ligatures: undefined }
   })
   afterEach(() => {
     cleanup()
@@ -223,7 +223,7 @@ describe('GeneralSettings terminal bell (P0.5)', () => {
   beforeEach(() => {
     updateSection.mockClear()
     load.mockClear()
-    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual' }
+    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual', webgl: undefined, ligatures: undefined }
   })
   afterEach(() => {
     cleanup()
@@ -262,7 +262,7 @@ describe('GeneralSettings terminal webgl / ligatures', () => {
   beforeEach(() => {
     updateSection.mockClear()
     load.mockClear()
-    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual' }
+    hipConfigState.config.terminal = { shell: 'default', colorTheme: 'follow', bell: 'visual', webgl: undefined, ligatures: undefined }
   })
   afterEach(() => {
     cleanup()
@@ -292,6 +292,7 @@ describe('GeneralSettings terminal webgl / ligatures', () => {
       colorTheme: 'follow',
       bell: 'visual',
       webgl: false,
+      ligatures: undefined,
     }
     render(<GeneralSettings />)
     expect(screen.getByTestId('settings-terminal-webgl')).toHaveAttribute('aria-checked', 'false')
