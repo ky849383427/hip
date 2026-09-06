@@ -228,6 +228,13 @@ export interface TerminalConfig {
    * JSON/TS: `shellIntegration`. TOML: `shell_integration`.
    */
   shellIntegration?: boolean
+  /**
+   * Debug overlay for terminal diagnostics.
+   * - `true`: show focus/cursor/keyboard debug info overlay
+   * - `false` (default): no debug overlay
+   * JSON/TS: `debug`. TOML: `debug`.
+   */
+  debug?: boolean
 }
 
 /**

@@ -8,6 +8,15 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  // Fix xterm.js 6.0.0 bug: esbuild minifier corrupts variable names in pre-minified code
+  // See: https://github.com/xtermjs/xterm.js/issues/5800
+  build: {
+    target: 'es2021',
+  },
+  esbuild: {
+    // Disable identifier minification to avoid ReferenceError in xterm.js requestMode
+    minifyIdentifiers: false,
+  },
   resolve: {
     alias: {
       "@hip/protocol": resolve(__dirname, "packages/protocol/src/index.ts"),

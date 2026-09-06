@@ -225,9 +225,11 @@ export function XtermSurface({
       search.onDidChangeResults(({ resultIndex, resultCount }) => {
         setSearchMatch({ index: resultCount > 0 ? resultIndex + 1 : 0, count: resultCount })
       })
+      console.log('[Terminal Init] Opening terminal in DOM element')
       term.open(el)
       termRef.current = term
       fitRef.current = fit
+      console.log('[Terminal Init] Terminal opened, cursorBlink:', term.options.cursorBlink)
 
       // Load terminal enhancement addons (WebGL, Ligatures, Unicode11).
       // These are optional and will gracefully degrade if not supported.
@@ -333,19 +335,10 @@ export function XtermSurface({
       })
 
       // P0.3: OSC 0/2 title → terminalStore (chrome / window title consumers).
-      // Native setTitle can steal focus on packaged WebView2; restore if we still own it.
+      // NOTE: Do NOT call xterm.focus() on title change — vim sends frequent title
+      // sequences and the focus call disrupts cursor rendering in packaged WebView2.
       titleDisp = xterm.onTitleChange((title) => {
         useTerminalStore.getState().setTitle(terminalId, title)
-        requestAnimationFrame(() => {
-          if (disposed) return
-          const active = document.activeElement
-          const container = containerRef.current
-          const inside =
-            container != null && active instanceof Node && container.contains(active)
-          if (!active || active === document.body || inside) {
-            xterm.focus()
-          }
-        })
       })
 
       // P0.4: Bell → visual flash unless [terminal].bell = "off".
@@ -388,7 +381,18 @@ export function XtermSurface({
       mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
 
       const writeChunk = (chunk: string) => {
-        if (!disposed && term && chunk) term.write(chunk)
+        if (!disposed && term && chunk) {
+          // Log terminal output for debugging (only log escape sequences)
+          if (chunk.includes('\x1b[')) {
+            // Detect cursor visibility sequences (DECTCEM)
+            if (chunk.includes('\x1b[?25h')) {
+              console.log('[Terminal Output] DECTCEM Show Cursor')
+            } else if (chunk.includes('\x1b[?25l')) {
+              console.log('[Terminal Output] DECTCEM Hide Cursor')
+            }
+          }
+          term.write(chunk)
+        }
       }
 
       const doFit = () => {
@@ -508,13 +512,56 @@ export function XtermSurface({
         ) {
           useTerminalStore.getState().noteUserInput(terminalId)
         }
+        // Log keyboard input for debugging
+        if (data.length <= 8) {
+          console.log('[Terminal Input]', JSON.stringify(data))
+        } else {
+          console.log('[Terminal Input] length:', data.length)
+        }
+        // Detect vim cursor visibility sequences (DECTCEM)
+        if (data.includes('\x1b[?25h')) {
+          console.log('[Terminal Cursor] DECTCEM Show Cursor (\x1b[?25h)')
+        } else if (data.includes('\x1b[?25l')) {
+          console.log('[Terminal Cursor] DECTCEM Hide Cursor (\x1b[?25l)')
+        }
         void writeRef.current(data).catch((err) => {
           console.warn(`[terminal] write failed terminalId=${terminalId}`, err)
         })
       })
 
       // Focus so keyboard works immediately after open.
-      term.focus()
+      // In Tauri packaged WebView2, the initial focus may not stick.
+      // Retry with delays to ensure xterm's internal textarea is focused.
+      // NOTE: Transparent window (transparent: true + acrylic/mica) may cause
+      // cursor rendering issues in packaged mode. If cursor is invisible, test
+      // with transparency disabled in tauri.conf.json.
+      console.log('[Terminal Init] Starting focus sequence for terminal:', terminalId)
+      const xtermForFocus = term!
+      xtermForFocus.focus()
+      console.log('[Terminal Init] Initial focus() called')
+      
+      setTimeout(() => {
+        if (!disposed) {
+          console.log('[Terminal Init] Focus retry at 100ms')
+          xtermForFocus.focus()
+          const textarea = containerRef.current?.querySelector('textarea')
+          console.log('[Terminal Init] Textarea exists:', !!textarea, 'focused:', textarea === document.activeElement)
+        }
+      }, 100)
+      setTimeout(() => {
+        if (!disposed) {
+          console.log('[Terminal Init] Focus retry at 500ms')
+          xtermForFocus.focus()
+        }
+      }, 500)
+      // Force cursor refresh after initialization (packed WebView2 may need this).
+      setTimeout(() => {
+        if (!disposed && term) {
+          console.log('[Terminal Init] Refreshing terminal at 600ms')
+          term.refresh(0, term.rows - 1)
+        }
+      }, 600)
+      console.log('[Terminal Init] Terminal initialization complete')
       setStarting(false)
     })()
 
@@ -661,6 +708,64 @@ export function XtermSurface({
     return t('artifact.terminalView.error')
   })()
 
+  // ── Debug state for packaged app diagnostics ──
+  const [debugInfo, setDebugInfo] = useState<{
+    focused: boolean
+    lastKey: string
+    cursorVisible: boolean
+    textareaActive: boolean
+  } | null>(null)
+  const showDebug = useHipConfigStore((s) => s.config.terminal?.debug)
+
+  // Debug: monitor focus and cursor state in packaged app
+  useEffect(() => {
+    if (!showDebug || !termRef.current) return
+    const term = termRef.current
+
+    console.log('[Terminal Debug] Debug mode enabled for terminal:', terminalId)
+
+    const updateDebug = () => {
+      const textarea = containerRef.current?.querySelector('textarea')
+      const newInfo = {
+        focused: document.activeElement === textarea,
+        lastKey: '',
+        cursorVisible: term.options.cursorBlink ?? true,
+        textareaActive: textarea === document.activeElement,
+      }
+      setDebugInfo(newInfo)
+    }
+
+    // Monitor focus changes
+    const onFocusIn = (e: FocusEvent) => {
+      console.log('[Terminal Debug] FocusIn:', e.target)
+      updateDebug()
+    }
+    const onFocusOut = (e: FocusEvent) => {
+      console.log('[Terminal Debug] FocusOut:', e.target)
+      updateDebug()
+    }
+    document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('focusout', onFocusOut)
+
+    // Monitor keyboard events
+    const onKeyDown = (e: KeyboardEvent) => {
+      console.log('[Terminal Debug] KeyDown:', e.key, e.code)
+      setDebugInfo(prev => prev ? { ...prev, lastKey: e.key } : null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+
+    updateDebug()
+    const interval = setInterval(updateDebug, 2000)
+
+    return () => {
+      console.log('[Terminal Debug] Debug mode disabled for terminal:', terminalId)
+      document.removeEventListener('focusin', onFocusIn)
+      document.removeEventListener('focusout', onFocusOut)
+      document.removeEventListener('keydown', onKeyDown)
+      clearInterval(interval)
+    }
+  }, [showDebug, terminalId])
+
   return (
     <div
       className="relative flex h-full min-h-0 flex-col"
@@ -738,7 +843,17 @@ export function XtermSurface({
           data-no-drag
           data-tauri-drag-region="false"
           data-context-menu-kind="terminal"
+          tabIndex={-1}
           onMouseDown={() => {
+            console.log('[Terminal Mouse] MouseDown event')
+            // Use microtask so mousedown finishes propagating before focus grabs.
+            // Critical for Tauri packaged WebView2 where focus may not stick.
+            queueMicrotask(() => {
+              console.log('[Terminal Mouse] queueMicrotask focus()')
+              termRef.current?.focus()
+            })
+            // Also call directly as fallback
+            console.log('[Terminal Mouse] Direct focus()')
             termRef.current?.focus()
           }}
           onContextMenu={onCanvasContextMenu}
@@ -751,6 +866,19 @@ export function XtermSurface({
           data-testid="terminal-bell-flash"
           className="pointer-events-none absolute inset-x-3 top-1 z-10 h-0.5 animate-pulse rounded-full bg-danger/70"
         />
+      )}
+
+      {/* Debug overlay for packaged app diagnostics */}
+      {showDebug && debugInfo && (
+        <div
+          data-testid="terminal-debug-overlay"
+          className="absolute bottom-2 right-2 z-50 rounded bg-black/80 p-2 font-mono text-xs text-green-400"
+        >
+          <div>Focus: {debugInfo.focused ? '✅' : '❌'}</div>
+          <div>Textarea: {debugInfo.textareaActive ? '✅' : '❌'}</div>
+          <div>Cursor: {debugInfo.cursorVisible ? '👁️' : '🚫'}</div>
+          {debugInfo.lastKey && <div>Key: {debugInfo.lastKey}</div>}
+        </div>
       )}
 
       {/* P0.1: terminal search overlay (⌘/Ctrl+F). */}

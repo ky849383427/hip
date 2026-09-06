@@ -1,6 +1,6 @@
 [package]
 name = "hip"
-version = "1.0.8"
+version = "1.0.10"
 description = "Desktop AI workbench (Tauri shell + React UI + Node sidecar)"
 authors = ["ljm"]
 edition = "2021"
@@ -41,7 +41,7 @@ tauri-build = { version = "2", features = [] }
 # macos-private-api: required for transparent window + NSVisualEffect vibrancy (App Store ineligible).
 # tray-icon: system tray for close-to-hide (docs/design/2026-07-25-window-close-tray.md).
 # image-png: load dedicated tray PNG (32/128) instead of only default_window_icon.
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png", "devtools"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
